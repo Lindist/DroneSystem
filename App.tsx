@@ -4,21 +4,30 @@ import {
   Text,
   TouchableOpacity,
   StatusBar,
+  Modal,
+  TextInput,
   Platform,
 } from 'react-native';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ScreenOrientation from 'expo-screen-orientation';
 import { NavigationBar } from 'expo-navigation-bar';
+import Svg, { Path } from 'react-native-svg';
 import { DroneCameraView } from './components/DroneCameraView';
+import { VirtualGimbal } from './components/VirtualGimbal';
 import './global.css';
 
 function DroneCockpit() {
   const insets = useSafeAreaInsets();
-  const [flightMode, setFlightMode] = useState<'MANUAL' | 'ALT_HOLD' | 'RTH'>('ALT_HOLD');
-  const [isArmed, setIsArmed] = useState(false);
-  const [fps, setFps] = useState(0);
+  const [serverUrl, setServerUrl] = useState('ws://10.86.148.147:8888');
+  const [tempUrl, setTempUrl] = useState('ws://10.86.148.147:8888');
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [fps, setFps] = useState(26);
 
-  // ตั้งค่าล็อกแนวนอน และซ่อนแถบปุ่ม Navigation Bar แบบ Immersive Fullscreen
+  // ค่าที่ได้รับจาก Gimbal ซ้ายและขวา
+  const [leftStick, setLeftStick] = useState({ x: 0, y: 0 });
+  const [rightStick, setRightStick] = useState({ x: 0, y: 0 });
+
+  // ล็อกแนวนอนและซ่อนแถบปุ่มแบบ Immersive
   useEffect(() => {
     async function configureFullscreen() {
       try {
@@ -27,11 +36,10 @@ function DroneCockpit() {
         );
 
         if (Platform.OS === 'android') {
-          // ซ่อนปุ่ม Navigation Bar ด้านล่างของ Android (โผล่ชั่วคราวเมื่อปัดขอบจอ)
           NavigationBar.setHidden(true);
         }
       } catch (err) {
-        console.warn('Failed to configure fullscreen landscape:', err);
+        console.warn('Fullscreen config error:', err);
       }
     }
     configureFullscreen();
@@ -39,150 +47,107 @@ function DroneCockpit() {
 
   return (
     <View
-      className="flex-1 bg-[#090d16]"
+      className="flex-1 bg-white justify-between"
       style={{
-        // เว้นขอบจอตาม Safe Area เพื่อป้องกันปุ่มล่างและติ่งกล้องบดบังเนื้อหา
-        paddingTop: Math.max(insets.top, 4),
-        paddingBottom: Math.max(insets.bottom, 4),
-        paddingLeft: Math.max(insets.left, 8),
-        paddingRight: Math.max(insets.right, 8),
+        paddingTop: Math.max(insets.top, 8),
+        paddingBottom: Math.max(insets.bottom, 12),
+        paddingLeft: Math.max(insets.left, 16),
+        paddingRight: Math.max(insets.right, 16),
       }}>
-      {/* ซ่อน Status Bar (เวลา, แบต, ไอคอนระบบ) เพื่อเพิ่มพื้นที่จอเต็มตา */}
       <StatusBar hidden={true} />
 
-      {/* Top Header Cockpit Bar */}
-      <View className="px-3 py-1.5 flex-row justify-between items-center border-b border-slate-800/80 bg-slate-950/70 rounded-xl mb-2">
-        <View className="flex-row items-center gap-2.5">
-          <Text className="text-slate-100 text-sm font-black tracking-widest font-mono">
-            AERO-LINK FPV
-          </Text>
-          <View className="bg-sky-500/10 px-2 py-0.5 rounded border border-sky-500/30">
-            <Text className="text-sky-400 text-[9px] font-bold font-mono">
-              IMMERSIVE COCKPIT
-            </Text>
-          </View>
-        </View>
+      {/* 1. Header Bar: Cathoa FPV & Settings Gear */}
+      <View className="flex-row justify-between items-center px-2 py-1">
+        <Text className="text-black text-2xl font-normal tracking-tight">
+          Cathoa FPV
+        </Text>
 
-        {/* Quick Telemetry Indicators */}
-        <View className="flex-row items-center gap-3">
-          <View className="flex-row items-center gap-1">
-            <Text className="text-slate-500 text-[10px] font-semibold">BAT:</Text>
-            <Text className="text-emerald-400 text-[11px] font-bold font-mono">11.8V (86%)</Text>
-          </View>
-
-          <View className="flex-row items-center gap-1">
-            <Text className="text-slate-500 text-[10px] font-semibold">SIGNAL:</Text>
-            <Text className="text-sky-400 text-[11px] font-bold font-mono">-62 dBm</Text>
-          </View>
-
-          <View className="flex-row items-center gap-1">
-            <Text className="text-slate-500 text-[10px] font-semibold">ALT:</Text>
-            <Text className="text-amber-400 text-[11px] font-bold font-mono">4.2 m</Text>
-          </View>
-
-          {/* Armed Badge */}
-          <View className="flex-row items-center bg-slate-900 px-2.5 py-0.5 rounded-full border border-slate-700">
-            <View
-              className={`w-2 h-2 rounded-full mr-1.5 ${
-                isArmed ? 'bg-emerald-500' : 'bg-rose-500'
-              }`}
-            />
-            <Text className="text-slate-200 text-[10px] font-bold tracking-wider font-mono">
-              {isArmed ? 'ARMED' : 'DISARMED'}
-            </Text>
-          </View>
-        </View>
+        <TouchableOpacity
+          className="p-1.5"
+          onPress={() => {
+            setTempUrl(serverUrl);
+            setIsSettingsOpen(true);
+          }}>
+          {/* ไอคอนรูปเฟืองสีดำตามแบบร่าง */}
+          <Svg width="26" height="26" viewBox="0 0 24 24" fill="black">
+            <Path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z" />
+          </Svg>
+        </TouchableOpacity>
       </View>
 
-      {/* Main Landscape Cockpit Body */}
-      <View className="flex-1 flex-row gap-2.5">
-        {/* Left Column: Live FPV Video Feed (ESP32-CAM) */}
-        <View className="flex-[3] h-full rounded-2xl overflow-hidden shadow-2xl">
+      {/* 2. Main Middle Section: Left Gimbal - Center Screen - Right Gimbal */}
+      <View className="flex-1 flex-row items-center justify-between px-2">
+        {/* Left Gimbal (Throttle / Yaw) */}
+        <View className="items-center justify-center">
+          <VirtualGimbal size={150} onMove={setLeftStick} />
+        </View>
+
+        {/* Center Live Screen (Cathoa FPV Video Viewport with X crosshair) */}
+        <View className="w-[48%] h-[82%] rounded-md overflow-hidden shadow-sm border border-slate-300">
           <DroneCameraView
-            defaultServerUrl="ws://10.86.148.147:8888"
+            serverUrl={serverUrl}
             onFpsChange={setFps}
-            className="h-full"
+            className="w-full h-full"
           />
         </View>
 
-        {/* Right Column: Drone Controls & Flight Telemetry Panel */}
-        <View className="flex-[2] h-full justify-between">
-          {/* Flight Modes Selection */}
-          <View className="bg-slate-900/90 rounded-xl p-2.5 border border-slate-800">
-            <Text className="text-slate-400 text-[9px] font-bold tracking-wider mb-1.5 font-mono">
-              FLIGHT MODES
-            </Text>
-            <View className="flex-row gap-1.5">
-              {(['MANUAL', 'ALT_HOLD', 'RTH'] as const).map((mode) => (
-                <TouchableOpacity
-                  key={mode}
-                  className={`flex-1 py-1.5 rounded-lg items-center border ${
-                    flightMode === mode
-                      ? 'bg-sky-600 border-sky-400'
-                      : 'bg-slate-800/80 border-slate-700'
-                  }`}
-                  onPress={() => setFlightMode(mode)}>
-                  <Text
-                    className={`text-[11px] font-bold ${
-                      flightMode === mode ? 'text-white' : 'text-slate-400'
-                    }`}>
-                    {mode}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
-
-          {/* Live Sensors Grid */}
-          <View className="bg-slate-900/90 rounded-xl p-2.5 border border-slate-800 flex-row justify-between">
-            <View className="items-center">
-              <Text className="text-slate-500 text-[9px] font-semibold">SPEED</Text>
-              <Text className="text-slate-200 text-xs font-bold font-mono">0.0 m/s</Text>
-            </View>
-            <View className="items-center">
-              <Text className="text-slate-500 text-[9px] font-semibold">PITCH</Text>
-              <Text className="text-slate-200 text-xs font-bold font-mono">+1.2°</Text>
-            </View>
-            <View className="items-center">
-              <Text className="text-slate-500 text-[9px] font-semibold">ROLL</Text>
-              <Text className="text-slate-200 text-xs font-bold font-mono">-0.4°</Text>
-            </View>
-            <View className="items-center">
-              <Text className="text-slate-500 text-[9px] font-semibold">FPS</Text>
-              <Text
-                className={`text-xs font-bold font-mono ${
-                  fps > 20 ? 'text-emerald-400' : 'text-amber-400'
-                }`}>
-                {fps}
-              </Text>
-            </View>
-          </View>
-
-          {/* Flight Safety & Power Actions */}
-          <View className="flex-row gap-2">
-            <TouchableOpacity
-              className={`flex-1 py-3 rounded-xl items-center justify-center ${
-                isArmed ? 'bg-amber-600' : 'bg-emerald-600'
-              }`}
-              onPress={() => setIsArmed(!isArmed)}>
-              <Text className="text-white text-xs font-black tracking-wider">
-                {isArmed ? 'DISARM MOTORS' : 'ARM MOTORS'}
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              className="flex-1 py-3 rounded-xl items-center justify-center bg-rose-500/20 border border-rose-500"
-              onPress={() => {
-                setIsArmed(false);
-                alert('EMERGENCY CUT-OFF ACTIVATED');
-              }}>
-              <Text className="text-rose-500 text-xs font-black tracking-wider">
-                EMERGENCY STOP
-              </Text>
-            </TouchableOpacity>
-          </View>
+        {/* Right Gimbal (Pitch / Roll) */}
+        <View className="items-center justify-center">
+          <VirtualGimbal size={150} onMove={setRightStick} />
         </View>
       </View>
+
+      {/* 3. Bottom Button: Emergency Stop (Pill Shape) */}
+      <View className="items-center justify-center pb-1">
+        <TouchableOpacity
+          className="bg-[#ff2b55] px-10 py-2.5 rounded-full shadow-md active:opacity-80"
+          onPress={() => {
+            alert('EMERGENCY STOP TRIGGERED: Motors cut off');
+          }}>
+          <Text className="text-white text-base font-medium tracking-normal">
+            Emergency Stop
+          </Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Settings Modal (สำหรับเปลี่ยน WebSocket IP ได้สะดวก) */}
+      <Modal visible={isSettingsOpen} transparent={true} animationType="fade">
+        <View className="flex-1 bg-black/50 justify-center items-center p-6">
+          <View className="bg-white rounded-2xl p-5 w-80 shadow-2xl border border-slate-200">
+            <Text className="text-slate-900 text-base font-bold mb-3">
+              WebSocket Connection
+            </Text>
+
+            <Text className="text-slate-500 text-xs mb-1.5 font-medium">
+              Drone Server URL:
+            </Text>
+            <TextInput
+              className="bg-slate-100 text-slate-900 px-3 py-2 rounded-lg text-xs border border-slate-300 mb-4"
+              value={tempUrl}
+              onChangeText={setTempUrl}
+              placeholder="ws://10.86.148.147:8888"
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+
+            <View className="flex-row justify-end gap-2">
+              <TouchableOpacity
+                className="px-4 py-2 rounded-lg bg-slate-200"
+                onPress={() => setIsSettingsOpen(false)}>
+                <Text className="text-slate-700 text-xs font-semibold">Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                className="px-4 py-2 rounded-lg bg-slate-900"
+                onPress={() => {
+                  setServerUrl(tempUrl);
+                  setIsSettingsOpen(false);
+                }}>
+                <Text className="text-white text-xs font-bold">Save</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }

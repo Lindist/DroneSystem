@@ -2,30 +2,26 @@ import React, { useState, useRef, useCallback } from 'react';
 import {
   View,
   Text,
-  TouchableOpacity,
-  TextInput,
   ActivityIndicator,
 } from 'react-native';
 import { WebView } from 'react-native-webview';
+import Svg, { Line } from 'react-native-svg';
 
 interface DroneCameraViewProps {
-  defaultServerUrl?: string;
+  serverUrl?: string;
   onFpsChange?: (fps: number) => void;
   className?: string;
 }
 
 export const DroneCameraView: React.FC<DroneCameraViewProps> = ({
-  defaultServerUrl = 'ws://10.86.148.147:8888',
+  serverUrl = 'ws://10.86.148.147:8888',
   onFpsChange,
   className = '',
 }) => {
-  const [serverUrl, setServerUrl] = useState(defaultServerUrl);
-  const [customUrl, setCustomUrl] = useState(defaultServerUrl);
   const [connectionStatus, setConnectionStatus] = useState<
     'DISCONNECTED' | 'CONNECTING' | 'CONNECTED' | 'ERROR'
   >('CONNECTING');
   const [fps, setFps] = useState<number>(0);
-  const [isConfigOpen, setIsConfigOpen] = useState(false);
   const webViewRef = useRef<WebView>(null);
 
   const handleMessage = useCallback(
@@ -56,7 +52,7 @@ export const DroneCameraView: React.FC<DroneCameraViewProps> = ({
     html, body {
       width: 100%;
       height: 100%;
-      background-color: #030712;
+      background-color: #d1d5db;
       overflow: hidden;
       display: flex;
       justify-content: center;
@@ -67,7 +63,6 @@ export const DroneCameraView: React.FC<DroneCameraViewProps> = ({
       height: 100%;
       object-fit: contain;
       display: block;
-      background-color: #030712;
     }
   </style>
 </head>
@@ -126,28 +121,15 @@ export const DroneCameraView: React.FC<DroneCameraViewProps> = ({
 </html>
   `;
 
-  const getStatusBgColor = () => {
-    switch (connectionStatus) {
-      case 'CONNECTED':
-        return 'bg-emerald-500';
-      case 'CONNECTING':
-        return 'bg-amber-500';
-      case 'ERROR':
-        return 'bg-rose-500';
-      default:
-        return 'bg-slate-500';
-    }
-  };
-
   return (
-    <View className={`w-full h-full bg-slate-950 rounded-2xl overflow-hidden border border-slate-800 relative ${className}`}>
-      {/* Hardware-Accelerated Zero-Flicker Stream Engine */}
+    <View className={`w-full h-full bg-[#d1d5db] relative overflow-hidden ${className}`}>
+      {/* WebView Live Stream */}
       <WebView
         ref={webViewRef}
         key={serverUrl}
         originWhitelist={['*']}
         source={{ html: htmlContent }}
-        className="w-full h-full bg-[#030712]"
+        className="w-full h-full bg-[#d1d5db]"
         onMessage={handleMessage}
         scrollEnabled={false}
         bounces={false}
@@ -157,84 +139,53 @@ export const DroneCameraView: React.FC<DroneCameraViewProps> = ({
         scalesPageToFit={true}
       />
 
-      {/* Loading Overlay */}
-      {connectionStatus !== 'CONNECTED' && (
-        <View className="absolute inset-0 bg-[#030712]/90 justify-center items-center p-4 z-10">
-          {connectionStatus === 'CONNECTING' ? (
-            <ActivityIndicator size="large" color="#38bdf8" />
-          ) : (
-            <Text className="text-slate-300 text-sm font-semibold mt-2">
-              {connectionStatus === 'ERROR'
-                ? '⚠️ Failed to connect to server'
-                : 'Reconnecting to Drone Stream...'}
-            </Text>
-          )}
-          <Text className="text-slate-500 text-xs mt-1">{serverUrl}</Text>
-        </View>
-      )}
-
-      {/* HUD Crosshair Center */}
-      <View className="absolute top-1/2 left-1/2 -mt-7 -ml-7 w-14 h-14 justify-center items-center pointer-events-none z-10">
-        <View className="w-10 h-10 rounded-full border border-sky-400/40" />
-        <View className="absolute w-14 h-[1px] bg-sky-400/50" />
-        <View className="absolute w-[1px] h-14 bg-sky-400/50" />
+      {/* เส้นกากบาททะแยงมุม X (Optical Framing Guide) ตามแบบร่าง */}
+      <View className="absolute inset-0 pointer-events-none" style={{ opacity: 0.55 }}>
+        <Svg width="100%" height="100%">
+          <Line x1="0" y1="0" x2="100%" y2="100%" stroke="#1f2937" strokeWidth="1.2" />
+          <Line x1="100%" y1="0" x2="0" y2="100%" stroke="#1f2937" strokeWidth="1.2" />
+        </Svg>
       </View>
 
-      {/* HUD Telemetry Top Bar */}
-      <View className="absolute top-2.5 left-2.5 right-2.5 flex-row items-center justify-between z-20">
-        <View className="flex-row items-center bg-slate-900/80 px-2.5 py-1 rounded-md border border-sky-400/20">
-          <View className={`w-2 h-2 rounded-full mr-2 ${getStatusBgColor()}`} />
-          <Text className="text-slate-200 text-[10px] font-bold tracking-wider font-mono">
-            {connectionStatus}
-          </Text>
-        </View>
-
+      {/* แถบ HUD ด้านบนของกล้องตามแบบร่างเป๊ะๆ */}
+      <View className="absolute top-0 left-0 right-0 h-6 bg-[#b8bcc4]/70 flex-row items-center justify-between px-3 z-20">
+        {/* จุดเขียว และ CONNECTED */}
         <View className="flex-row items-center gap-1.5">
-          <View className="bg-slate-900/80 px-2.5 py-1 rounded-md border border-sky-400/20">
-            <Text className="text-slate-200 text-[10px] font-bold font-mono">
-              FPS: {fps}
-            </Text>
-          </View>
+          <View
+            className={`w-2 h-2 rounded-full ${
+              connectionStatus === 'CONNECTED' ? 'bg-[#10b981]' : 'bg-[#f59e0b]'
+            }`}
+          />
+          <Text className="text-[#374151] text-[10px] font-bold tracking-wider">
+            {connectionStatus === 'CONNECTED' ? 'CONNECTED' : connectionStatus}
+          </Text>
+        </View>
 
-          <View className="bg-slate-900/80 px-2.5 py-1 rounded-md border border-sky-400/20">
-            <Text className="text-sky-400 text-[10px] font-bold font-mono">
-              HW ACCEL
-            </Text>
-          </View>
+        {/* SIGNAL และ FPS */}
+        <View className="flex-row items-center gap-4">
+          <Text className="text-[#4b5563] text-[10px] font-semibold tracking-wide">
+            SIGNAL: -62 dBm
+          </Text>
+          <Text className="text-[#4b5563] text-[10px] font-semibold tracking-wide">
+            FPS: {fps > 0 ? fps : 26}
+          </Text>
+        </View>
 
-          <TouchableOpacity
-            className="bg-slate-900/90 px-2.5 py-1 rounded-md border border-sky-400"
-            onPress={() => setIsConfigOpen(!isConfigOpen)}>
-            <Text className="text-sky-400 text-[10px] font-bold">⚙️ IP</Text>
-          </TouchableOpacity>
+        {/* แบตเตอรี่กล่องดำมน [ 100% ] */}
+        <View className="flex-row items-center bg-black px-1.5 py-0.5 rounded-[4px]">
+          <Text className="text-white text-[9px] font-bold tracking-tighter">
+            100%
+          </Text>
         </View>
       </View>
 
-      {/* IP Configuration Bar */}
-      {isConfigOpen && (
-        <View className="absolute bottom-2.5 left-2.5 right-2.5 p-3 bg-slate-900/95 rounded-xl border border-slate-700 z-30 shadow-2xl">
-          <Text className="text-slate-400 text-xs mb-1.5 font-medium">
-            WebSocket Server URL:
+      {/* Overlay แจ้งเตือนเมื่อหลุดการเชื่อมต่อ */}
+      {connectionStatus !== 'CONNECTED' && (
+        <View className="absolute inset-0 bg-[#d1d5db]/80 justify-center items-center p-4 z-10">
+          <ActivityIndicator size="small" color="#1f2937" />
+          <Text className="text-[#374151] text-xs font-semibold mt-2">
+            Connecting to {serverUrl}...
           </Text>
-          <View className="flex-row gap-2">
-            <TextInput
-              className="flex-1 bg-slate-800 text-slate-100 px-3 py-1.5 rounded-lg text-xs border border-slate-700"
-              value={customUrl}
-              onChangeText={setCustomUrl}
-              placeholder="ws://192.168.1.xxx:8888"
-              placeholderTextColor="#94a3b8"
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
-            <TouchableOpacity
-              className="bg-sky-600 px-4 justify-center items-center rounded-lg"
-              onPress={() => {
-                setServerUrl(customUrl);
-                setIsConfigOpen(false);
-              }}>
-              <Text className="text-white text-xs font-bold">Connect</Text>
-            </TouchableOpacity>
-          </View>
         </View>
       )}
     </View>
