@@ -8,6 +8,7 @@ import {
   TextInput,
   Platform,
 } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ScreenOrientation from 'expo-screen-orientation';
 import { NavigationBar } from 'expo-navigation-bar';
@@ -22,6 +23,7 @@ function DroneCockpit() {
   const [tempUrl, setTempUrl] = useState('ws://10.86.148.147:8888');
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [fps, setFps] = useState(26);
+  const [connectionStatus, setConnectionStatus] = useState('CONNECTING');
 
   // ค่าที่ได้รับจาก Gimbal ซ้ายและขวา
   const [leftStick, setLeftStick] = useState({ x: 0, y: 0 });
@@ -49,10 +51,10 @@ function DroneCockpit() {
     <View
       className="flex-1 bg-[#0f172a] justify-between"
       style={{
-        paddingTop: Math.max(insets.top, 8),
-        paddingBottom: Math.max(insets.bottom, 8),
-        paddingLeft: Math.max(insets.left, 16),
-        paddingRight: Math.max(insets.right, 16),
+        paddingTop: Math.max(insets.top, 4),
+        paddingBottom: Math.max(insets.bottom, 4),
+        paddingLeft: Math.max(insets.left, 8),
+        paddingRight: Math.max(insets.right, 8),
       }}>
       <StatusBar hidden={true} />
 
@@ -81,13 +83,43 @@ function DroneCockpit() {
           <VirtualGimbal size={180} onMove={setLeftStick} snapBackY={false} />
         </View>
 
-        {/* Center Live Screen (Cathoa FPV Video Viewport with X crosshair) */}
-        <View className="flex-1 h-full mx-6 rounded-lg overflow-hidden shadow-sm border border-slate-700 bg-black">
-          <DroneCameraView
-            serverUrl={serverUrl}
-            onFpsChange={setFps}
-            className="w-full h-full"
-          />
+        {/* Center Live Screen (Cathoa FPV Video Viewport) */}
+        <View className="flex-1 h-full mx-2">
+          {/* HUD Status Bar ย้ายมาอยู่ด้านนอก WebView ไม่ทับภาพแล้ว */}
+          <View className="h-6 bg-[#1e293b] flex-row items-center justify-between px-3 rounded-t-lg border border-b-0 border-slate-700">
+            <View className="flex-row items-center gap-1.5">
+              <View
+                className={`w-2 h-2 rounded-full ${
+                  connectionStatus === 'CONNECTED' ? 'bg-[#10b981]' : 'bg-[#f59e0b]'
+                }`}
+              />
+              <Text className="text-slate-300 text-[10px] font-bold tracking-wider">
+                {connectionStatus}
+              </Text>
+            </View>
+            <View className="flex-row items-center gap-4">
+              <Text className="text-slate-400 text-[10px] font-semibold tracking-wide">
+                SIGNAL: -62 dBm
+              </Text>
+              <Text className="text-slate-400 text-[10px] font-semibold tracking-wide">
+                FPS: {fps > 0 ? fps : '--'}
+              </Text>
+            </View>
+            <View className="flex-row items-center bg-slate-700 px-1.5 py-0.5 rounded-[4px]">
+              <Text className="text-white text-[9px] font-bold tracking-tighter">
+                100%
+              </Text>
+            </View>
+          </View>
+          {/* Stream View */}
+          <View className="flex-1 rounded-b-lg overflow-hidden border border-t-0 border-slate-700 bg-black">
+            <DroneCameraView
+              serverUrl={serverUrl}
+              onFpsChange={setFps}
+              onStatusChange={setConnectionStatus}
+              className="w-full h-full"
+            />
+          </View>
         </View>
 
         {/* Right Gimbal (Pitch / Roll) */}
@@ -153,8 +185,10 @@ function DroneCockpit() {
 
 export default function App() {
   return (
-    <SafeAreaProvider>
-      <DroneCockpit />
-    </SafeAreaProvider>
+    <GestureHandlerRootView className="flex-1">
+      <SafeAreaProvider>
+        <DroneCockpit />
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 }

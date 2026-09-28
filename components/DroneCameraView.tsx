@@ -5,23 +5,23 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { WebView } from 'react-native-webview';
-import Svg, { Line } from 'react-native-svg';
 
 interface DroneCameraViewProps {
   serverUrl?: string;
   onFpsChange?: (fps: number) => void;
+  onStatusChange?: (status: string) => void;
   className?: string;
 }
 
 export const DroneCameraView: React.FC<DroneCameraViewProps> = ({
   serverUrl = 'ws://10.86.148.147:8888',
   onFpsChange,
+  onStatusChange,
   className = '',
 }) => {
   const [connectionStatus, setConnectionStatus] = useState<
     'DISCONNECTED' | 'CONNECTING' | 'CONNECTED' | 'ERROR'
   >('CONNECTING');
-  const [fps, setFps] = useState<number>(0);
   const webViewRef = useRef<WebView>(null);
 
   const handleMessage = useCallback(
@@ -30,15 +30,15 @@ export const DroneCameraView: React.FC<DroneCameraViewProps> = ({
         const data = JSON.parse(event.nativeEvent.data);
         if (data.type === 'STATUS') {
           setConnectionStatus(data.status);
+          if (onStatusChange) onStatusChange(data.status);
         } else if (data.type === 'FPS') {
-          setFps(data.fps);
           if (onFpsChange) onFpsChange(data.fps);
         }
       } catch (err) {
         // ignore non-json messages
       }
     },
-    [onFpsChange]
+    [onFpsChange, onStatusChange]
   );
 
   const htmlContent = `
@@ -52,7 +52,7 @@ export const DroneCameraView: React.FC<DroneCameraViewProps> = ({
     html, body {
       width: 100%;
       height: 100%;
-      background-color: #d1d5db;
+      background-color: #000;
       overflow: hidden;
       display: flex;
       justify-content: center;
@@ -122,14 +122,14 @@ export const DroneCameraView: React.FC<DroneCameraViewProps> = ({
   `;
 
   return (
-    <View className={`w-full h-full bg-[#d1d5db] relative overflow-hidden ${className}`}>
+    <View className={`w-full h-full bg-black relative overflow-hidden ${className}`}>
       {/* WebView Live Stream */}
       <WebView
         ref={webViewRef}
         key={serverUrl}
         originWhitelist={['*']}
         source={{ html: htmlContent }}
-        className="w-full h-full bg-[#d1d5db]"
+        className="w-full h-full bg-black"
         onMessage={handleMessage}
         scrollEnabled={false}
         bounces={false}
@@ -139,51 +139,11 @@ export const DroneCameraView: React.FC<DroneCameraViewProps> = ({
         scalesPageToFit={true}
       />
 
-      {/* เส้นกากบาททะแยงมุม X (Optical Framing Guide) ตามแบบร่าง */}
-      <View className="absolute inset-0 pointer-events-none" style={{ opacity: 0.55 }}>
-        <Svg width="100%" height="100%">
-          <Line x1="0" y1="0" x2="100%" y2="100%" stroke="#1f2937" strokeWidth="1.2" />
-          <Line x1="100%" y1="0" x2="0" y2="100%" stroke="#1f2937" strokeWidth="1.2" />
-        </Svg>
-      </View>
-
-      {/* แถบ HUD ด้านบนของกล้องตามแบบร่างเป๊ะๆ */}
-      <View className="absolute top-0 left-0 right-0 h-6 bg-[#b8bcc4]/70 flex-row items-center justify-between px-3 z-20">
-        {/* จุดเขียว และ CONNECTED */}
-        <View className="flex-row items-center gap-1.5">
-          <View
-            className={`w-2 h-2 rounded-full ${
-              connectionStatus === 'CONNECTED' ? 'bg-[#10b981]' : 'bg-[#f59e0b]'
-            }`}
-          />
-          <Text className="text-[#374151] text-[10px] font-bold tracking-wider">
-            {connectionStatus === 'CONNECTED' ? 'CONNECTED' : connectionStatus}
-          </Text>
-        </View>
-
-        {/* SIGNAL และ FPS */}
-        <View className="flex-row items-center gap-4">
-          <Text className="text-[#4b5563] text-[10px] font-semibold tracking-wide">
-            SIGNAL: -62 dBm
-          </Text>
-          <Text className="text-[#4b5563] text-[10px] font-semibold tracking-wide">
-            FPS: {fps > 0 ? fps : 26}
-          </Text>
-        </View>
-
-        {/* แบตเตอรี่กล่องดำมน [ 100% ] */}
-        <View className="flex-row items-center bg-black px-1.5 py-0.5 rounded-[4px]">
-          <Text className="text-white text-[9px] font-bold tracking-tighter">
-            100%
-          </Text>
-        </View>
-      </View>
-
       {/* Overlay แจ้งเตือนเมื่อหลุดการเชื่อมต่อ */}
       {connectionStatus !== 'CONNECTED' && (
-        <View className="absolute inset-0 bg-[#d1d5db]/80 justify-center items-center p-4 z-10">
-          <ActivityIndicator size="small" color="#1f2937" />
-          <Text className="text-[#374151] text-xs font-semibold mt-2">
+        <View className="absolute inset-0 bg-black/80 justify-center items-center p-4 z-10">
+          <ActivityIndicator size="small" color="#94a3b8" />
+          <Text className="text-slate-400 text-xs font-semibold mt-2">
             Connecting to {serverUrl}...
           </Text>
         </View>
