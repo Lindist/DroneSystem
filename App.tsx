@@ -47,10 +47,10 @@ function DroneCockpit() {
 
   return (
     <View
-      className="flex-1 bg-white justify-between"
+      className="flex-1 bg-[#0f172a] justify-between"
       style={{
         paddingTop: Math.max(insets.top, 8),
-        paddingBottom: Math.max(insets.bottom, 12),
+        paddingBottom: Math.max(insets.bottom, 8),
         paddingLeft: Math.max(insets.left, 16),
         paddingRight: Math.max(insets.right, 16),
       }}>
@@ -58,7 +58,7 @@ function DroneCockpit() {
 
       {/* 1. Header Bar: Cathoa FPV & Settings Gear */}
       <View className="flex-row justify-between items-center px-2 py-1">
-        <Text className="text-black text-2xl font-normal tracking-tight">
+        <Text className="text-white text-xl font-bold tracking-widest uppercase">
           Cathoa FPV
         </Text>
 
@@ -68,22 +68,21 @@ function DroneCockpit() {
             setTempUrl(serverUrl);
             setIsSettingsOpen(true);
           }}>
-          {/* ไอคอนรูปเฟืองสีดำตามแบบร่าง */}
-          <Svg width="26" height="26" viewBox="0 0 24 24" fill="black">
+          <Svg width="26" height="26" viewBox="0 0 24 24" fill="white">
             <Path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z" />
           </Svg>
         </TouchableOpacity>
       </View>
 
       {/* 2. Main Middle Section: Left Gimbal - Center Screen - Right Gimbal */}
-      <View className="flex-1 flex-row items-center justify-between px-2">
+      <View className="flex-1 flex-row items-center justify-between px-2 my-1">
         {/* Left Gimbal (Throttle / Yaw) */}
         <View className="items-center justify-center">
-          <VirtualGimbal size={150} onMove={setLeftStick} />
+          <VirtualGimbal size={180} onMove={setLeftStick} snapBackY={false} />
         </View>
 
         {/* Center Live Screen (Cathoa FPV Video Viewport with X crosshair) */}
-        <View className="w-[48%] h-[82%] rounded-md overflow-hidden shadow-sm border border-slate-300">
+        <View className="flex-1 h-full mx-6 rounded-lg overflow-hidden shadow-sm border border-slate-700 bg-black">
           <DroneCameraView
             serverUrl={serverUrl}
             onFpsChange={setFps}
@@ -93,18 +92,18 @@ function DroneCockpit() {
 
         {/* Right Gimbal (Pitch / Roll) */}
         <View className="items-center justify-center">
-          <VirtualGimbal size={150} onMove={setRightStick} />
+          <VirtualGimbal size={180} onMove={setRightStick} />
         </View>
       </View>
 
       {/* 3. Bottom Button: Emergency Stop (Pill Shape) */}
-      <View className="items-center justify-center pb-1">
+      <View className="items-center justify-center pb-2">
         <TouchableOpacity
-          className="bg-[#ff2b55] px-10 py-2.5 rounded-full shadow-md active:opacity-80"
+          className="bg-red-600 px-12 py-3 rounded-full shadow-lg active:bg-red-700 border-2 border-red-500"
           onPress={() => {
             alert('EMERGENCY STOP TRIGGERED: Motors cut off');
           }}>
-          <Text className="text-white text-base font-medium tracking-normal">
+          <Text className="text-white text-base font-bold tracking-widest uppercase">
             Emergency Stop
           </Text>
         </TouchableOpacity>
