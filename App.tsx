@@ -1,104 +1,131 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
   TouchableOpacity,
-  ScrollView,
-  SafeAreaView,
-  StyleSheet,
   StatusBar,
+  Platform,
 } from 'react-native';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
+import * as ScreenOrientation from 'expo-screen-orientation';
+import { NavigationBar } from 'expo-navigation-bar';
 import { DroneCameraView } from './components/DroneCameraView';
 import './global.css';
 
-export default function App() {
+function DroneCockpit() {
+  const insets = useSafeAreaInsets();
   const [flightMode, setFlightMode] = useState<'MANUAL' | 'ALT_HOLD' | 'RTH'>('ALT_HOLD');
   const [isArmed, setIsArmed] = useState(false);
   const [fps, setFps] = useState(0);
 
+  // ตั้งค่าล็อกแนวนอน และซ่อนแถบปุ่ม Navigation Bar แบบ Immersive Fullscreen
+  useEffect(() => {
+    async function configureFullscreen() {
+      try {
+        await ScreenOrientation.lockAsync(
+          ScreenOrientation.OrientationLock.LANDSCAPE
+        );
+
+        if (Platform.OS === 'android') {
+          // ซ่อนปุ่ม Navigation Bar ด้านล่างของ Android (โผล่ชั่วคราวเมื่อปัดขอบจอ)
+          NavigationBar.setHidden(true);
+        }
+      } catch (err) {
+        console.warn('Failed to configure fullscreen landscape:', err);
+      }
+    }
+    configureFullscreen();
+  }, []);
+
   return (
-    <SafeAreaProvider>
-      <SafeAreaView style={styles.safeArea}>
-        <StatusBar barStyle="light-content" backgroundColor="#090d16" />
-        <ScrollView
-          style={styles.container}
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}>
-          
-          {/* Header Bar */}
-          <View style={styles.header}>
-            <View>
-              <Text style={styles.brandTitle}>AERO-LINK FPV</Text>
-              <Text style={styles.brandSubtitle}>Drone Ground Control Station</Text>
-            </View>
-            <View style={styles.telemetryBadge}>
-              <View
-                style={[
-                  styles.armedDot,
-                  { backgroundColor: isArmed ? '#22c55e' : '#ef4444' },
-                ]}
-              />
-              <Text style={styles.armedText}>{isArmed ? 'ARMED' : 'DISARMED'}</Text>
-            </View>
+    <View
+      className="flex-1 bg-[#090d16]"
+      style={{
+        // เว้นขอบจอตาม Safe Area เพื่อป้องกันปุ่มล่างและติ่งกล้องบดบังเนื้อหา
+        paddingTop: Math.max(insets.top, 4),
+        paddingBottom: Math.max(insets.bottom, 4),
+        paddingLeft: Math.max(insets.left, 8),
+        paddingRight: Math.max(insets.right, 8),
+      }}>
+      {/* ซ่อน Status Bar (เวลา, แบต, ไอคอนระบบ) เพื่อเพิ่มพื้นที่จอเต็มตา */}
+      <StatusBar hidden={true} />
+
+      {/* Top Header Cockpit Bar */}
+      <View className="px-3 py-1.5 flex-row justify-between items-center border-b border-slate-800/80 bg-slate-950/70 rounded-xl mb-2">
+        <View className="flex-row items-center gap-2.5">
+          <Text className="text-slate-100 text-sm font-black tracking-widest font-mono">
+            AERO-LINK FPV
+          </Text>
+          <View className="bg-sky-500/10 px-2 py-0.5 rounded border border-sky-500/30">
+            <Text className="text-sky-400 text-[9px] font-bold font-mono">
+              IMMERSIVE COCKPIT
+            </Text>
+          </View>
+        </View>
+
+        {/* Quick Telemetry Indicators */}
+        <View className="flex-row items-center gap-3">
+          <View className="flex-row items-center gap-1">
+            <Text className="text-slate-500 text-[10px] font-semibold">BAT:</Text>
+            <Text className="text-emerald-400 text-[11px] font-bold font-mono">11.8V (86%)</Text>
           </View>
 
-          {/* Quick Stats Top Bar */}
-          <View style={styles.statsRow}>
-            <View style={styles.statBox}>
-              <Text style={styles.statLabel}>BATTERY</Text>
-              <Text style={styles.statValue}>11.8V (86%)</Text>
-            </View>
-            <View style={styles.statBox}>
-              <Text style={styles.statLabel}>SIGNAL</Text>
-              <Text style={[styles.statValue, { color: '#38bdf8' }]}>-62 dBm</Text>
-            </View>
-            <View style={styles.statBox}>
-              <Text style={styles.statLabel}>ALTITUDE</Text>
-              <Text style={styles.statValue}>4.2 m</Text>
-            </View>
-            <View style={styles.statBox}>
-              <Text style={styles.statLabel}>FPS</Text>
-              <Text style={[styles.statValue, { color: fps > 15 ? '#22c55e' : '#eab308' }]}>
-                {fps}
-              </Text>
-            </View>
+          <View className="flex-row items-center gap-1">
+            <Text className="text-slate-500 text-[10px] font-semibold">SIGNAL:</Text>
+            <Text className="text-sky-400 text-[11px] font-bold font-mono">-62 dBm</Text>
           </View>
 
-          {/* Live Camera Stream Section (ESP32-CAM via WebSocket) */}
-          <View style={styles.cameraSection}>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>LIVE CAMERA FEED (ESP32-CAM)</Text>
-              <View style={styles.liveIndicator}>
-                <View style={styles.liveDot} />
-                <Text style={styles.liveText}>WEBSOCKET</Text>
-              </View>
-            </View>
+          <View className="flex-row items-center gap-1">
+            <Text className="text-slate-500 text-[10px] font-semibold">ALT:</Text>
+            <Text className="text-amber-400 text-[11px] font-bold font-mono">4.2 m</Text>
+          </View>
 
-            {/* Drone Camera Component */}
-            <DroneCameraView
-              defaultServerUrl="ws://10.86.148.147:8888"
-              onFpsChange={setFps}
+          {/* Armed Badge */}
+          <View className="flex-row items-center bg-slate-900 px-2.5 py-0.5 rounded-full border border-slate-700">
+            <View
+              className={`w-2 h-2 rounded-full mr-1.5 ${
+                isArmed ? 'bg-emerald-500' : 'bg-rose-500'
+              }`}
             />
+            <Text className="text-slate-200 text-[10px] font-bold tracking-wider font-mono">
+              {isArmed ? 'ARMED' : 'DISARMED'}
+            </Text>
           </View>
+        </View>
+      </View>
 
-          {/* Flight Mode Selector */}
-          <View style={styles.controlCard}>
-            <Text style={styles.controlCardTitle}>FLIGHT MODES</Text>
-            <View style={styles.modeRow}>
+      {/* Main Landscape Cockpit Body */}
+      <View className="flex-1 flex-row gap-2.5">
+        {/* Left Column: Live FPV Video Feed (ESP32-CAM) */}
+        <View className="flex-[3] h-full rounded-2xl overflow-hidden shadow-2xl">
+          <DroneCameraView
+            defaultServerUrl="ws://10.86.148.147:8888"
+            onFpsChange={setFps}
+            className="h-full"
+          />
+        </View>
+
+        {/* Right Column: Drone Controls & Flight Telemetry Panel */}
+        <View className="flex-[2] h-full justify-between">
+          {/* Flight Modes Selection */}
+          <View className="bg-slate-900/90 rounded-xl p-2.5 border border-slate-800">
+            <Text className="text-slate-400 text-[9px] font-bold tracking-wider mb-1.5 font-mono">
+              FLIGHT MODES
+            </Text>
+            <View className="flex-row gap-1.5">
               {(['MANUAL', 'ALT_HOLD', 'RTH'] as const).map((mode) => (
                 <TouchableOpacity
                   key={mode}
-                  style={[
-                    styles.modeButton,
-                    flightMode === mode && styles.modeButtonActive,
-                  ]}
+                  className={`flex-1 py-1.5 rounded-lg items-center border ${
+                    flightMode === mode
+                      ? 'bg-sky-600 border-sky-400'
+                      : 'bg-slate-800/80 border-slate-700'
+                  }`}
                   onPress={() => setFlightMode(mode)}>
                   <Text
-                    style={[
-                      styles.modeButtonText,
-                      flightMode === mode && styles.modeButtonTextActive,
-                    ]}>
+                    className={`text-[11px] font-bold ${
+                      flightMode === mode ? 'text-white' : 'text-slate-400'
+                    }`}>
                     {mode}
                   </Text>
                 </TouchableOpacity>
@@ -106,248 +133,64 @@ export default function App() {
             </View>
           </View>
 
-          {/* Primary Drone Actions */}
-          <View style={styles.actionsRow}>
+          {/* Live Sensors Grid */}
+          <View className="bg-slate-900/90 rounded-xl p-2.5 border border-slate-800 flex-row justify-between">
+            <View className="items-center">
+              <Text className="text-slate-500 text-[9px] font-semibold">SPEED</Text>
+              <Text className="text-slate-200 text-xs font-bold font-mono">0.0 m/s</Text>
+            </View>
+            <View className="items-center">
+              <Text className="text-slate-500 text-[9px] font-semibold">PITCH</Text>
+              <Text className="text-slate-200 text-xs font-bold font-mono">+1.2°</Text>
+            </View>
+            <View className="items-center">
+              <Text className="text-slate-500 text-[9px] font-semibold">ROLL</Text>
+              <Text className="text-slate-200 text-xs font-bold font-mono">-0.4°</Text>
+            </View>
+            <View className="items-center">
+              <Text className="text-slate-500 text-[9px] font-semibold">FPS</Text>
+              <Text
+                className={`text-xs font-bold font-mono ${
+                  fps > 20 ? 'text-emerald-400' : 'text-amber-400'
+                }`}>
+                {fps}
+              </Text>
+            </View>
+          </View>
+
+          {/* Flight Safety & Power Actions */}
+          <View className="flex-row gap-2">
             <TouchableOpacity
-              style={[
-                styles.actionBtn,
-                isArmed ? styles.actionBtnDisarm : styles.actionBtnArm,
-              ]}
+              className={`flex-1 py-3 rounded-xl items-center justify-center ${
+                isArmed ? 'bg-amber-600' : 'bg-emerald-600'
+              }`}
               onPress={() => setIsArmed(!isArmed)}>
-              <Text style={styles.actionBtnText}>
+              <Text className="text-white text-xs font-black tracking-wider">
                 {isArmed ? 'DISARM MOTORS' : 'ARM MOTORS'}
               </Text>
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={[styles.actionBtn, styles.actionBtnEmergency]}
+              className="flex-1 py-3 rounded-xl items-center justify-center bg-rose-500/20 border border-rose-500"
               onPress={() => {
                 setIsArmed(false);
-                alert('EMERGENCY STOP TRIGGERED: Motors cut off');
+                alert('EMERGENCY CUT-OFF ACTIVATED');
               }}>
-              <Text style={styles.actionBtnEmergencyText}>EMERGENCY STOP</Text>
+              <Text className="text-rose-500 text-xs font-black tracking-wider">
+                EMERGENCY STOP
+              </Text>
             </TouchableOpacity>
           </View>
-
-          {/* Quick Guide / Help Note */}
-          <View style={styles.noteCard}>
-            <Text style={styles.noteTitle}>💡 WebSocket Setup Note</Text>
-            <Text style={styles.noteContent}>
-              1. สั่งรัน Server ด้วยคำสั่ง <Text style={styles.codeText}>npm run server</Text>{'\n'}
-              2. ตรวจสอบ IP เครื่องใน Terminal และนำไปใส่ใน <Text style={styles.codeText}>CameraWebServerLocalHost.ino</Text>{'\n'}
-              3. กดปุ่ม <Text style={styles.codeText}>⚙️ IP</Text> บนจอกล้องเพื่อเปลี่ยน WebSocket URL ให้ตรงกัน
-            </Text>
-          </View>
-        </ScrollView>
-      </SafeAreaView>
-    </SafeAreaProvider>
+        </View>
+      </View>
+    </View>
   );
 }
 
-const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: '#090d16',
-  },
-  container: {
-    flex: 1,
-  },
-  scrollContent: {
-    padding: 16,
-    paddingBottom: 40,
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  brandTitle: {
-    color: '#f8fafc',
-    fontSize: 20,
-    fontWeight: '800',
-    letterSpacing: 1.5,
-  },
-  brandSubtitle: {
-    color: '#64748b',
-    fontSize: 12,
-    fontWeight: '500',
-    marginTop: 2,
-  },
-  telemetryBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#1e293b',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: '#334155',
-  },
-  armedDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    marginRight: 6,
-  },
-  armedText: {
-    color: '#f1f5f9',
-    fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: 1,
-  },
-  statsRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    backgroundColor: '#0f172a',
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: '#1e293b',
-  },
-  statBox: {
-    alignItems: 'center',
-  },
-  statLabel: {
-    color: '#64748b',
-    fontSize: 10,
-    fontWeight: '600',
-    marginBottom: 2,
-  },
-  statValue: {
-    color: '#f8fafc',
-    fontSize: 12,
-    fontWeight: '700',
-    fontFamily: 'monospace',
-  },
-  cameraSection: {
-    marginBottom: 16,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  sectionTitle: {
-    color: '#94a3b8',
-    fontSize: 12,
-    fontWeight: '700',
-    letterSpacing: 1,
-  },
-  liveIndicator: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  liveDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: '#38bdf8',
-    marginRight: 4,
-  },
-  liveText: {
-    color: '#38bdf8',
-    fontSize: 10,
-    fontWeight: '700',
-  },
-  controlCard: {
-    backgroundColor: '#0f172a',
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: '#1e293b',
-  },
-  controlCardTitle: {
-    color: '#94a3b8',
-    fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: 1,
-    marginBottom: 10,
-  },
-  modeRow: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  modeButton: {
-    flex: 1,
-    backgroundColor: '#1e293b',
-    paddingVertical: 10,
-    borderRadius: 8,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#334155',
-  },
-  modeButtonActive: {
-    backgroundColor: '#0284c7',
-    borderColor: '#38bdf8',
-  },
-  modeButtonText: {
-    color: '#94a3b8',
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  modeButtonTextActive: {
-    color: '#ffffff',
-  },
-  actionsRow: {
-    flexDirection: 'row',
-    gap: 12,
-    marginBottom: 16,
-  },
-  actionBtn: {
-    flex: 1,
-    paddingVertical: 14,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  actionBtnArm: {
-    backgroundColor: '#15803d',
-  },
-  actionBtnDisarm: {
-    backgroundColor: '#b45309',
-  },
-  actionBtnText: {
-    color: '#ffffff',
-    fontSize: 13,
-    fontWeight: '800',
-    letterSpacing: 1,
-  },
-  actionBtnEmergency: {
-    backgroundColor: 'rgba(239, 68, 68, 0.15)',
-    borderWidth: 1,
-    borderColor: '#ef4444',
-  },
-  actionBtnEmergencyText: {
-    color: '#ef4444',
-    fontSize: 13,
-    fontWeight: '800',
-    letterSpacing: 1,
-  },
-  noteCard: {
-    backgroundColor: 'rgba(30, 41, 59, 0.5)',
-    borderRadius: 12,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: '#334155',
-  },
-  noteTitle: {
-    color: '#38bdf8',
-    fontSize: 13,
-    fontWeight: '700',
-    marginBottom: 6,
-  },
-  noteContent: {
-    color: '#94a3b8',
-    fontSize: 12,
-    lineHeight: 20,
-  },
-  codeText: {
-    color: '#f8fafc',
-    fontWeight: '700',
-    fontFamily: 'monospace',
-  },
-});
+export default function App() {
+  return (
+    <SafeAreaProvider>
+      <DroneCockpit />
+    </SafeAreaProvider>
+  );
+}

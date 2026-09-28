@@ -22,7 +22,7 @@
       ]
     ],
 
-    "orientation": "portrait",
+    "orientation": "landscape",
     "icon": "./assets/icon.png",
 
     "userInterfaceStyle": "automatic",
