@@ -14,7 +14,7 @@ interface DroneCameraViewProps {
 }
 
 export const DroneCameraView: React.FC<DroneCameraViewProps> = ({
-  serverUrl = 'ws://10.86.148.147:8888',
+  serverUrl = 'http://192.168.43.10:81/stream',
   onFpsChange,
   onStatusChange,
   className = '',
@@ -67,10 +67,11 @@ export const DroneCameraView: React.FC<DroneCameraViewProps> = ({
   </style>
 </head>
 <body>
-  <img id="stream" />
+  <img id="stream" alt="Connecting to stream..." />
   <script>
     const img = document.getElementById('stream');
-    const WS_URL = '${serverUrl}';
+    const TARGET_URL = '${serverUrl.trim()}';
+    const isHttp = TARGET_URL.startsWith('http://') || TARGET_URL.startsWith('https://');
     let ws;
     let urlObject;
     let frameCount = 0;
@@ -86,36 +87,76 @@ export const DroneCameraView: React.FC<DroneCameraViewProps> = ({
       frameCount = 0;
     }, 1000);
 
-    function connect() {
+    if (isHttp) {
+      // ----------------------------------------------------
+      // โหมด Standalone: เชื่อมต่อตรงไปยัง ESP32-CAM MJPEG Stream
+      // ----------------------------------------------------
       sendToNative({ type: 'STATUS', status: 'CONNECTING' });
-      ws = new WebSocket(WS_URL);
-      ws.binaryType = 'arraybuffer';
 
-      ws.onopen = () => {
+      img.onload = () => {
+        frameCount++;
         sendToNative({ type: 'STATUS', status: 'CONNECTED' });
       };
 
-      ws.onmessage = (message) => {
-        frameCount++;
-        const arrayBuffer = message.data;
-        if (urlObject) {
-          URL.revokeObjectURL(urlObject);
-        }
-        urlObject = URL.createObjectURL(new Blob([arrayBuffer]));
-        img.src = urlObject;
-      };
-
-      ws.onerror = () => {
+      img.onerror = () => {
         sendToNative({ type: 'STATUS', status: 'ERROR' });
+        setTimeout(() => {
+          // รีโหลดรูปภาพใหม่เพื่อเชื่อมต่อใหม่อัตโนมัติ
+          const sep = TARGET_URL.includes('?') ? '&' : '?';
+          img.src = TARGET_URL + sep + '_retry=' + Date.now();
+        }, 2000);
       };
 
-      ws.onclose = () => {
-        sendToNative({ type: 'STATUS', status: 'DISCONNECTED' });
-        setTimeout(connect, 2000);
-      };
+      // เริ่มโหลดภาพจาก ESP32-CAM
+      img.src = TARGET_URL;
+
+      // ในบาง Browser ของ Android MJPEG onload อาจถูกเรียกครั้งแรก จึงส่ง CONNECTED เมื่อเริ่มโหลดได้สำเร็จ
+      setTimeout(() => {
+        if (img.complete && img.naturalWidth > 0) {
+          sendToNative({ type: 'STATUS', status: 'CONNECTED' });
+        }
+      }, 1500);
+
+    } else {
+      // ----------------------------------------------------
+      // โหมด WebSocket Relay (สำหรับระบบที่รัน Server ตัวกลาง)
+      // ----------------------------------------------------
+      function connectWs() {
+        sendToNative({ type: 'STATUS', status: 'CONNECTING' });
+        try {
+          ws = new WebSocket(TARGET_URL);
+          ws.binaryType = 'arraybuffer';
+
+          ws.onopen = () => {
+            sendToNative({ type: 'STATUS', status: 'CONNECTED' });
+          };
+
+          ws.onmessage = (message) => {
+            frameCount++;
+            const arrayBuffer = message.data;
+            if (urlObject) {
+              URL.revokeObjectURL(urlObject);
+            }
+            urlObject = URL.createObjectURL(new Blob([arrayBuffer]));
+            img.src = urlObject;
+          };
+
+          ws.onerror = () => {
+            sendToNative({ type: 'STATUS', status: 'ERROR' });
+          };
+
+          ws.onclose = () => {
+            sendToNative({ type: 'STATUS', status: 'DISCONNECTED' });
+            setTimeout(connectWs, 2000);
+          };
+        } catch (e) {
+          sendToNative({ type: 'STATUS', status: 'ERROR' });
+          setTimeout(connectWs, 2000);
+        }
+      }
+
+      connectWs();
     }
-
-    connect();
   </script>
 </body>
 </html>
@@ -137,6 +178,8 @@ export const DroneCameraView: React.FC<DroneCameraViewProps> = ({
         javaScriptEnabled={true}
         domStorageEnabled={true}
         scalesPageToFit={true}
+        mixedContentMode="always"
+        allowsInlineMediaPlayback={true}
       />
 
       {/* Overlay แจ้งเตือนเมื่อหลุดการเชื่อมต่อ */}
