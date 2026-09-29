@@ -32,6 +32,10 @@ function DroneCockpit() {
   const [fcPort, setFcPort] = useState('4210');
   const [tempFcPort, setTempFcPort] = useState('4210');
 
+  // สถานะการตรวจพบอุปกรณ์อัตโนมัติ (UDP Auto-Discovery)
+  const [isCamDiscovered, setIsCamDiscovered] = useState(false);
+  const [isFcDiscovered, setIsFcDiscovered] = useState(false);
+
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [fps, setFps] = useState(0);
   const [connectionStatus, setConnectionStatus] = useState('CONNECTING');
@@ -64,6 +68,29 @@ function DroneCockpit() {
     });
 
     return () => subscription.remove();
+  }, []);
+
+  // ----------------------------------------------------
+  // ระบบ UDP Broadcast Auto-Discovery: ดักฟัง IP บอร์ดอัตโนมัติ
+  // ----------------------------------------------------
+  useEffect(() => {
+    const unsubscribe = flightController.onDiscovered((device) => {
+      if (device.type === 'CAM' && device.streamUrl) {
+        setCameraUrl(device.streamUrl);
+        setTempCameraUrl(device.streamUrl);
+        setIsCamDiscovered(true);
+      } else if (device.type === 'FC') {
+        setFcIp(device.ip);
+        setTempFcIp(device.ip);
+        const portStr = String(device.port || 4210);
+        setFcPort(portStr);
+        setTempFcPort(portStr);
+        flightController.setTarget(device.ip, Number(portStr));
+        setIsFcDiscovered(true);
+      }
+    });
+
+    return () => unsubscribe();
   }, []);
 
   // ซิงค์ IP/Port เริ่มต้นกับ Flight Controller Service
@@ -116,16 +143,42 @@ function DroneCockpit() {
       }}>
       <StatusBar hidden={true} />
 
-      {/* 1. Header Bar: Cathoa FPV & Settings Gear */}
+      {/* 1. Header Bar: Cathoa FPV, Status Badges & Settings Gear */}
       <View className="flex-row justify-between items-center px-2 py-1">
         <View className="flex-row items-center gap-2">
           <Text className="text-white text-xl font-bold tracking-widest uppercase">
             Cathoa FPV
           </Text>
-          <View className="bg-emerald-950/80 border border-emerald-500/30 px-2 py-0.5 rounded-full">
-            <Text className="text-emerald-400 text-[9px] font-semibold tracking-wider uppercase">
-              Standalone Hotspot
-            </Text>
+
+          {/* ป้ายแสดงสถานะการตรวจพบอุปกรณ์อัตโนมัติ */}
+          <View className="flex-row items-center gap-1.5 ml-1">
+            <View
+              className={`px-2 py-0.5 rounded-full border ${
+                isCamDiscovered
+                  ? 'bg-cyan-950/80 border-cyan-500/40'
+                  : 'bg-slate-800/80 border-slate-700/50'
+              }`}>
+              <Text
+                className={`text-[9px] font-semibold tracking-wider uppercase ${
+                  isCamDiscovered ? 'text-cyan-400' : 'text-slate-400'
+                }`}>
+                CAM: {isCamDiscovered ? 'AUTO' : 'SEARCHING'}
+              </Text>
+            </View>
+
+            <View
+              className={`px-2 py-0.5 rounded-full border ${
+                isFcDiscovered
+                  ? 'bg-emerald-950/80 border-emerald-500/40'
+                  : 'bg-slate-800/80 border-slate-700/50'
+              }`}>
+              <Text
+                className={`text-[9px] font-semibold tracking-wider uppercase ${
+                  isFcDiscovered ? 'text-emerald-400' : 'text-slate-400'
+                }`}>
+                FC: {isFcDiscovered ? 'AUTO' : 'SEARCHING'}
+              </Text>
+            </View>
           </View>
         </View>
 
@@ -174,9 +227,12 @@ function DroneCockpit() {
               </Text>
             </View>
 
-            <View className="flex-row items-center bg-slate-700 px-1.5 py-0.5 rounded-[4px]">
+            <View
+              className={`flex-row items-center px-1.5 py-0.5 rounded-[4px] ${
+                isCamDiscovered && isFcDiscovered ? 'bg-emerald-600' : 'bg-slate-700'
+              }`}>
               <Text className="text-white text-[9px] font-bold tracking-tighter">
-                STANDALONE
+                {isCamDiscovered && isFcDiscovered ? 'AUTO-LINKED' : 'HOTSPOT'}
               </Text>
             </View>
           </View>
@@ -244,19 +300,31 @@ function DroneCockpit() {
       <Modal visible={isSettingsOpen} transparent={true} animationType="fade">
         <View className="flex-1 bg-black/60 justify-center items-center p-4">
           <View className="bg-[#1e293b] rounded-2xl p-5 w-96 shadow-2xl border border-slate-700 max-h-[90%]">
-            <Text className="text-white text-base font-bold mb-1 tracking-wide">
-              Hardware Connection Settings
-            </Text>
+            <View className="flex-row justify-between items-center mb-1">
+              <Text className="text-white text-base font-bold tracking-wide">
+                Hardware Connection Settings
+              </Text>
+              <View className="flex-row items-center gap-1 bg-emerald-950/80 border border-emerald-500/40 px-2 py-0.5 rounded-full">
+                <View className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                <Text className="text-emerald-400 text-[9px] font-bold">AUTO-DISCOVERY</Text>
+              </View>
+            </View>
+
             <Text className="text-slate-400 text-[11px] mb-3">
-              กำหนด IP ของ ESP32-CAM และ ESP8266 ในวง Mobile Hotspot
+              ระบบตรวจจับ IP อัตโนมัติ (หรือกำหนดเองหากต้องการ)
             </Text>
 
             <ScrollView showsVerticalScrollIndicator={false} className="mb-3">
               {/* 1. ESP32-CAM Stream URL */}
               <View className="mb-3">
-                <Text className="text-cyan-400 text-[11px] mb-1 font-semibold">
-                  1. ESP32-CAM Stream URL (MJPEG HTTP / WS)
-                </Text>
+                <View className="flex-row justify-between items-center mb-1">
+                  <Text className="text-cyan-400 text-[11px] font-semibold">
+                    1. ESP32-CAM Stream URL
+                  </Text>
+                  {isCamDiscovered && (
+                    <Text className="text-emerald-400 text-[9px] font-bold">✓ AUTO-FOUND</Text>
+                  )}
+                </View>
                 <TextInput
                   className="bg-slate-900 text-slate-100 px-3 py-2 rounded-lg text-xs border border-slate-700 font-mono"
                   value={tempCameraUrl}
@@ -270,9 +338,14 @@ function DroneCockpit() {
 
               {/* 2. ESP8266 Flight Controller Target */}
               <View className="mb-3">
-                <Text className="text-emerald-400 text-[11px] mb-1 font-semibold">
-                  2. ESP8266 Flight Controller (UDP)
-                </Text>
+                <View className="flex-row justify-between items-center mb-1">
+                  <Text className="text-emerald-400 text-[11px] font-semibold">
+                    2. ESP8266 Flight Controller (UDP)
+                  </Text>
+                  {isFcDiscovered && (
+                    <Text className="text-emerald-400 text-[9px] font-bold">✓ AUTO-FOUND</Text>
+                  )}
+                </View>
                 <View className="flex-row gap-2">
                   <View className="flex-1">
                     <Text className="text-slate-400 text-[10px] mb-0.5">IP Address:</Text>
@@ -302,11 +375,11 @@ function DroneCockpit() {
 
               {/* Helper Notice */}
               <View className="bg-slate-900/60 p-2.5 rounded-lg border border-slate-800">
-                <Text className="text-amber-400 text-[10px] font-bold mb-0.5">
-                  💡 วิธีตรวจดู IP ของทั้ง 2 บอร์ด:
+                <Text className="text-cyan-400 text-[10px] font-bold mb-0.5">
+                  ✨ ระบบค้นหา IP อัตโนมัติ (Zero-Config):
                 </Text>
                 <Text className="text-slate-300 text-[10px] leading-relaxed">
-                  ไปที่ การตั้งค่ามือถือ &gt; ฮอตสปอตพกพา (Hotspot) &gt; รายชื่ออุปกรณ์ที่เชื่อมต่อ (Connected Devices) จะเห็น IP ของ ESP32-CAM และ ESP8266 นำมากรอกที่นี่ได้เลยครับ
+                  ทันทีที่บอร์ด ESP32-CAM และ ESP8266 เชื่อมต่อเข้า Hotspot ของมือถือได้สำเร็จ ทั้ง 2 บอร์ดจะส่งสัญญาณ Beacon มายังแอปเพื่อลงทะเบียน IP อัตโนมัติทันทีโดยที่คุณไม่ต้องกรอกเองครับ
                 </Text>
               </View>
             </ScrollView>
