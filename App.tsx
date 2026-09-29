@@ -11,7 +11,7 @@ import {
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ScreenOrientation from 'expo-screen-orientation';
-import { NavigationBar } from 'expo-navigation-bar';
+import { NavigationBar, addVisibilityListener } from 'expo-navigation-bar';
 import Svg, { Path } from 'react-native-svg';
 import { DroneCameraView } from './components/DroneCameraView';
 import { VirtualGimbal } from './components/VirtualGimbal';
@@ -29,14 +29,11 @@ function DroneCockpit() {
   const [leftStick, setLeftStick] = useState({ x: 0, y: 0 });
   const [rightStick, setRightStick] = useState({ x: 0, y: 0 });
 
-  // ล็อกแนวนอนและซ่อนแถบปุ่มแบบ Immersive
+  // ล็อกแนวนอนและซ่อนแถบปุ่มแบบ Immersive ถาวร
   useEffect(() => {
     async function configureFullscreen() {
       try {
-        await ScreenOrientation.lockAsync(
-          ScreenOrientation.OrientationLock.LANDSCAPE
-        );
-
+        await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
         if (Platform.OS === 'android') {
           NavigationBar.setHidden(true);
         }
@@ -45,6 +42,17 @@ function DroneCockpit() {
       }
     }
     configureFullscreen();
+
+    // ล็อคไม่ให้แถบนำทางโผล่ค้างเวลาไปกดปุ่มอื่น
+    const subscription = addVisibilityListener(({ visibility }) => {
+      if (visibility === 'visible' && Platform.OS === 'android') {
+        setTimeout(() => {
+          NavigationBar.setHidden(true);
+        }, 1500); // ซ่อนกลับอัตโนมัติ
+      }
+    });
+
+    return () => subscription.remove();
   }, []);
 
   return (
@@ -128,12 +136,48 @@ function DroneCockpit() {
         </View>
       </View>
 
-      {/* 3. Bottom Button: Emergency Stop (Pill Shape) */}
-      <View className="items-center justify-center pb-2">
+      {/* 3. Bottom Section: Telemetry Bar & Emergency Stop */}
+      <View className="items-center justify-end pb-2 gap-2">
+        
+        {/* Telemetry Bar */}
+        <View className="flex-row items-center justify-center bg-[#1e293b]/80 px-6 py-1.5 rounded-full border border-slate-700/50 gap-6">
+          <View className="flex-row items-center gap-2">
+            <Text className="text-slate-400 text-[10px] font-bold">THROTTLE</Text>
+            <Text className="text-cyan-400 text-xs font-mono w-10 text-right">
+              {Math.round(leftStick.y * 100)}%
+            </Text>
+          </View>
+          <View className="w-[1px] h-3 bg-slate-600" />
+          <View className="flex-row items-center gap-2">
+            <Text className="text-slate-400 text-[10px] font-bold">YAW</Text>
+            <Text className="text-emerald-400 text-xs font-mono w-10 text-right">
+              {Math.round(leftStick.x * 100)}%
+            </Text>
+          </View>
+          <View className="w-[1px] h-3 bg-slate-600" />
+          <View className="flex-row items-center gap-2">
+            <Text className="text-slate-400 text-[10px] font-bold">PITCH</Text>
+            <Text className="text-amber-400 text-xs font-mono w-10 text-right">
+              {Math.round(rightStick.y * 100)}%
+            </Text>
+          </View>
+          <View className="w-[1px] h-3 bg-slate-600" />
+          <View className="flex-row items-center gap-2">
+            <Text className="text-slate-400 text-[10px] font-bold">ROLL</Text>
+            <Text className="text-violet-400 text-xs font-mono w-10 text-right">
+              {Math.round(rightStick.x * 100)}%
+            </Text>
+          </View>
+        </View>
+
         <TouchableOpacity
-          className="bg-red-600 px-12 py-3 rounded-full shadow-lg active:bg-red-700 border-2 border-red-500"
+          className="bg-red-600 px-12 py-2.5 rounded-full shadow-lg active:bg-red-700 border-2 border-red-500"
           onPress={() => {
             alert('EMERGENCY STOP TRIGGERED: Motors cut off');
+            // Re-hide nav bar immediately just in case
+            if (Platform.OS === 'android') {
+               NavigationBar.setHidden(true);
+            }
           }}>
           <Text className="text-white text-base font-bold tracking-widest uppercase">
             Emergency Stop

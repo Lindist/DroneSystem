@@ -55,24 +55,39 @@ export const VirtualGimbal: React.FC<VirtualGimbalProps> = ({
         .onUpdate((e) => {
           let dx = savedX.value + e.translationX;
           let dy = savedY.value + e.translationY;
-          const distance = Math.sqrt(dx * dx + dy * dy);
 
-          if (distance > maxRadius) {
-            dx = (dx / distance) * maxRadius;
-            dy = (dy / distance) * maxRadius;
+          // จำกัดขอบเขตเป็นสี่เหลี่ยม (Square constraint)
+          dx = Math.max(-maxRadius, Math.min(maxRadius, dx));
+          dy = Math.max(-maxRadius, Math.min(maxRadius, dy));
+
+          // ระบบ Deadband: สร้าง "ร่องเสมือน" (Virtual Slot) ตรงกลางแต่ละแกน
+          // ป้องกันนิ้วสั่น/เผลอเอียงเวลาตั้งใจจะลากแกนเดียวตรงๆ
+          const deadzoneX = maxRadius * 0.20; // ลากซ้าย/ขวาต้องเกิน 20% ถึงจะเริ่มมีผล
+          const deadzoneY = maxRadius * 0.15; // ลากบน/ล่างต้องเกิน 15% ถึงจะเริ่มมีผล
+
+          let outDx = 0;
+          let outDy = 0;
+
+          // ถ้าค่าเกิน deadzone ค่อยหัก deadzone ออกแล้วขยายกลับเป็น 100% (เพื่อให้ลากแล้วสมูท ไม่กระโดด)
+          if (Math.abs(dx) > deadzoneX) {
+            outDx = Math.sign(dx) * ((Math.abs(dx) - deadzoneX) / (maxRadius - deadzoneX)) * maxRadius;
+          }
+          if (Math.abs(dy) > deadzoneY) {
+            outDy = Math.sign(dy) * ((Math.abs(dy) - deadzoneY) / (maxRadius - deadzoneY)) * maxRadius;
           }
 
-          translateX.value = dx;
-          translateY.value = dy;
+          translateX.value = outDx;
+          translateY.value = outDy;
 
-          runOnJS(reportMove)(dx, dy);
+          runOnJS(reportMove)(outDx, outDy);
         })
         .onEnd(() => {
           const finalX = snapBackX ? 0 : translateX.value;
           const finalY = snapBackY ? 0 : translateY.value;
 
-          translateX.value = withSpring(finalX, { damping: 12, stiffness: 120 });
-          translateY.value = withSpring(finalY, { damping: 12, stiffness: 120 });
+          // เพิ่ม overshootClamping: true และปรับ damping ให้สูงขึ้น เพื่อไม่ให้จอยเด้งกระดอนไปมา
+          translateX.value = withSpring(finalX, { damping: 25, stiffness: 250, overshootClamping: true });
+          translateY.value = withSpring(finalY, { damping: 25, stiffness: 250, overshootClamping: true });
 
           runOnJS(reportMove)(finalX, finalY);
         })
