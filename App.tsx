@@ -36,12 +36,18 @@ function DroneCockpit() {
   const [isCamDiscovered, setIsCamDiscovered] = useState(false);
   const [isFcDiscovered, setIsFcDiscovered] = useState(false);
 
+  // สถานะเปิด/ปิดการทำงานของมอเตอร์ (Start / Stop)
+  const [isStarted, setIsStarted] = useState(false);
+  // ตัวกระตุ้นให้ก้าน Throttle เด้งรีเซ็ตกลับลงมาด้านล่างสุด
+  const [throttleResetTrigger, setThrottleResetTrigger] = useState(0);
+
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [fps, setFps] = useState(0);
   const [connectionStatus, setConnectionStatus] = useState('CONNECTING');
 
   // ค่าที่ได้รับจาก Gimbal ซ้าย (Throttle, Yaw) และ ขวา (Pitch, Roll)
-  const [leftStick, setLeftStick] = useState({ x: 0, y: 0 });
+  // เริ่มต้นให้ Throttle (y) อยู่ที่ -1.0 (ล่างสุด = 0% / 1000 PWM) เพื่อความปลอดภัย
+  const [leftStick, setLeftStick] = useState({ x: 0, y: -1 });
   const [rightStick, setRightStick] = useState({ x: 0, y: 0 });
 
   // ล็อกแนวนอนและซ่อนแถบปุ่มแบบ Immersive ถาวร
@@ -100,11 +106,14 @@ function DroneCockpit() {
 
   // ลูปส่งคำสั่ง UDP แบบต่อเนื่อง (20Hz = ทุก 50ms) ป้องกัน Failsafe บน ESP8266 ตัดการทำงาน
   useEffect(() => {
+    // หากยังไม่กด START (Motors Not Started) จะยังไม่ส่งข้อมูลใดๆ ไปยัง ESP8266
+    if (!isStarted) {
+      return;
+    }
+
     const timer = setInterval(() => {
-      // แปลงค่า Left Stick Y (-1 ถึง 1) ให้เป็น PWM 1000 - 2000
-      // -1 (ล่างสุด) = 1000 (ดับเครื่อง)
-      // +1 (บนสุด)  = 2000 (เร่งสุด)
-      const throttleNorm = (leftStick.y + 1) / 2; // 0.0 ถึง 1.0
+      // เมื่อกด START แล้ว (โหมด Armed) ส่งค่าพิกัดจริงที่อ่านได้จากคันโยก
+      const throttleNorm = (leftStick.y + 1) / 2; // 0.0 (ล่างสุด) ถึง 1.0 (บนสุด)
       const throttlePwm = 1000 + Math.round(throttleNorm * 1000);
 
       // แปลงค่าแกนอื่นๆ (-1 ถึง 1) ให้เป็นช่วง -50 ถึง +50 องศา
@@ -116,19 +125,39 @@ function DroneCockpit() {
     }, 50);
 
     return () => clearInterval(timer);
-  }, [leftStick.x, leftStick.y, rightStick.x, rightStick.y]);
+  }, [isStarted, leftStick.x, leftStick.y, rightStick.x, rightStick.y]);
 
-  // คำนวณเปอร์เซ็นต์สำหรับแสดงบน Telemetry Bar
+  // คำนวณเปอร์เซ็นต์สำหรับแสดงบน Telemetry Bar (แสดงค่าจริงตามตำแหน่งคันโยกเสมอ แม้ยังไม่กด Start)
   const throttlePercent = Math.max(0, Math.min(100, Math.round(((leftStick.y + 1) / 2) * 100)));
   const yawPercent = Math.round(leftStick.x * 100);
   const pitchPercent = Math.round(rightStick.y * 100);
   const rollPercent = Math.round(rightStick.x * 100);
 
-  const handleEmergencyStop = () => {
-    flightController.emergencyStop();
-    alert('EMERGENCY STOP: ตัดกำลังมอเตอร์ทั้งหมดแล้ว (Throttle = 1000)');
-    if (Platform.OS === 'android') {
-      NavigationBar.setHidden(true);
+  // ฟังก์ชันสลับการทำงานปุ่ม START / STOP
+  const handleToggleStartStop = () => {
+    if (!isStarted) {
+      // --- เมื่อกด START ---
+      setIsStarted(true);
+      // รีเซ็ตคันโยก Throttle ให้เด้งกลับลงไปด้านล่างสุดทันที
+      setThrottleResetTrigger((prev) => prev + 1);
+      setLeftStick((prev) => ({ ...prev, y: -1 }));
+
+      if (Platform.OS === 'android') {
+        NavigationBar.setHidden(true);
+      }
+    } else {
+      // --- เมื่อกด STOP ---
+      setIsStarted(false);
+      // ตัดไฟมอเตอร์ทันทีด้วยสัญญาณ 1000
+      flightController.emergencyStop();
+      // รีเซ็ต Throttle กลับลงด้านล่าง
+      setThrottleResetTrigger((prev) => prev + 1);
+      setLeftStick((prev) => ({ ...prev, y: -1 }));
+
+      alert('MOTORS STOPPED: ตัดกำลังมอเตอร์และเข้าสู่โหมดปลอดภัยแล้ว');
+      if (Platform.OS === 'android') {
+        NavigationBar.setHidden(true);
+      }
     }
   };
 
@@ -198,9 +227,17 @@ function DroneCockpit() {
 
       {/* 2. Main Middle Section: Left Gimbal - Center Screen - Right Gimbal */}
       <View className="flex-1 flex-row items-center justify-between px-2 my-1">
-        {/* Left Gimbal (Throttle / Yaw) */}
+        {/* Left Gimbal (Throttle / Yaw) - ปุ่มลากขนาดใหญ่ขึ้น + รีเซ็ตลงด้านล่างสุดได้ */}
         <View className="items-center justify-center">
-          <VirtualGimbal size={180} onMove={setLeftStick} snapBackY={false} />
+          <VirtualGimbal
+            size={180}
+            onMove={setLeftStick}
+            snapBackX={true}
+            snapBackY={false}
+            initialY={-1}
+            resetTrigger={throttleResetTrigger}
+            accentColor="#38bdf8"
+          />
         </View>
 
         {/* Center Live Screen (Cathoa FPV Video Viewport) */}
@@ -218,7 +255,7 @@ function DroneCockpit() {
               </Text>
             </View>
 
-            <View className="flex-row items-center gap-4">
+            <View className="flex-row items-center gap-3">
               <Text className="text-slate-400 text-[10px] font-semibold tracking-wide">
                 UDP: {fcIp}:{fcPort}
               </Text>
@@ -227,12 +264,15 @@ function DroneCockpit() {
               </Text>
             </View>
 
+            {/* ป้ายแสดงสถานะการบิน (ARMED / DISARMED) */}
             <View
-              className={`flex-row items-center px-1.5 py-0.5 rounded-[4px] ${
-                isCamDiscovered && isFcDiscovered ? 'bg-emerald-600' : 'bg-slate-700'
+              className={`flex-row items-center px-2 py-0.5 rounded-[4px] border ${
+                isStarted
+                  ? 'bg-emerald-600/90 border-emerald-400'
+                  : 'bg-amber-600/80 border-amber-400/60'
               }`}>
-              <Text className="text-white text-[9px] font-bold tracking-tighter">
-                {isCamDiscovered && isFcDiscovered ? 'AUTO-LINKED' : 'HOTSPOT'}
+              <Text className="text-white text-[9px] font-bold tracking-wider">
+                {isStarted ? 'ARMED' : 'DISARMED'}
               </Text>
             </View>
           </View>
@@ -248,13 +288,20 @@ function DroneCockpit() {
           </View>
         </View>
 
-        {/* Right Gimbal (Pitch / Roll) */}
+        {/* Right Gimbal (Pitch / Roll) - ปุ่มลากขนาดใหญ่ขึ้น + Snapback กึ่งกลาง */}
         <View className="items-center justify-center">
-          <VirtualGimbal size={180} onMove={setRightStick} />
+          <VirtualGimbal
+            size={180}
+            onMove={setRightStick}
+            snapBackX={true}
+            snapBackY={true}
+            initialY={0}
+            accentColor="#f59e0b"
+          />
         </View>
       </View>
 
-      {/* 3. Bottom Section: Telemetry Bar & Emergency Stop */}
+      {/* 3. Bottom Section: Telemetry Bar & Start/Stop Button */}
       <View className="items-center justify-end pb-2 gap-2">
         {/* Telemetry Bar */}
         <View className="flex-row items-center justify-center bg-[#1e293b]/90 px-6 py-1.5 rounded-full border border-slate-700/50 gap-6">
@@ -287,11 +334,27 @@ function DroneCockpit() {
           </View>
         </View>
 
+        {/* ปุ่ม Start / Stop แทนปุ่ม Emergency Stop เดิม */}
         <TouchableOpacity
-          className="bg-red-600 px-12 py-2.5 rounded-full shadow-lg active:bg-red-700 border-2 border-red-500"
-          onPress={handleEmergencyStop}>
+          className={`px-14 py-2.5 rounded-full shadow-lg border-2 flex-row items-center gap-2.5 ${
+            isStarted
+              ? 'bg-rose-600 active:bg-rose-700 border-rose-400'
+              : 'bg-emerald-600 active:bg-emerald-700 border-emerald-400'
+          }`}
+          onPress={handleToggleStartStop}>
+          {isStarted ? (
+            // ไอคอนสี่เหลี่ยม STOP
+            <Svg width="18" height="18" viewBox="0 0 24 24" fill="white">
+              <Path d="M6 6h12v12H6z" />
+            </Svg>
+          ) : (
+            // ไอคอนสามเหลี่ยม START
+            <Svg width="18" height="18" viewBox="0 0 24 24" fill="white">
+              <Path d="M8 5v14l11-7z" />
+            </Svg>
+          )}
           <Text className="text-white text-base font-bold tracking-widest uppercase">
-            Emergency Stop
+            {isStarted ? 'STOP MOTORS' : 'START MOTORS'}
           </Text>
         </TouchableOpacity>
       </View>
