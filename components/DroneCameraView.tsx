@@ -31,6 +31,9 @@ export const DroneCameraView: React.FC<DroneCameraViewProps> = ({
         if (data.type === 'STATUS') {
           setConnectionStatus(data.status);
           if (onStatusChange) onStatusChange(data.status);
+          if (data.status !== 'CONNECTED' && onFpsChange) {
+            onFpsChange(0);
+          }
         } else if (data.type === 'FPS') {
           if (onFpsChange) onFpsChange(data.fps);
         }
@@ -67,7 +70,7 @@ export const DroneCameraView: React.FC<DroneCameraViewProps> = ({
   </style>
 </head>
 <body>
-  <img id="stream" alt="Connecting to stream..." />
+  <img id="stream" alt="Cathoa FPV Video Feed" />
   <script>
     const img = document.getElementById('stream');
     const TARGET_URL = '${serverUrl.trim()}';
@@ -75,6 +78,7 @@ export const DroneCameraView: React.FC<DroneCameraViewProps> = ({
     let ws;
     let urlObject;
     let frameCount = 0;
+    let abortController = null;
 
     function sendToNative(data) {
       if (window.ReactNativeWebView) {
@@ -82,6 +86,7 @@ export const DroneCameraView: React.FC<DroneCameraViewProps> = ({
       }
     }
 
+    // ส่งค่า FPS ไปยังฝั่ง Native ทุกๆ 1 วินาที
     setInterval(() => {
       sendToNative({ type: 'FPS', fps: frameCount });
       frameCount = 0;
@@ -90,32 +95,107 @@ export const DroneCameraView: React.FC<DroneCameraViewProps> = ({
     if (isHttp) {
       // ----------------------------------------------------
       // โหมด Standalone: เชื่อมต่อตรงไปยัง ESP32-CAM MJPEG Stream
+      // ใช้ ReadableStream แยกเฟรม JPEG เพื่อคำนวณ FPS จริงแบบ Real-time
       // ----------------------------------------------------
       sendToNative({ type: 'STATUS', status: 'CONNECTING' });
 
-      img.onload = () => {
-        frameCount++;
-        sendToNative({ type: 'STATUS', status: 'CONNECTED' });
-      };
+      function appendBuffer(b1, b2) {
+        const merged = new Uint8Array(b1.length + b2.length);
+        merged.set(b1, 0);
+        merged.set(b2, b1.length);
+        return merged;
+      }
 
-      img.onerror = () => {
-        sendToNative({ type: 'STATUS', status: 'ERROR' });
-        setTimeout(() => {
-          // รีโหลดรูปภาพใหม่เพื่อเชื่อมต่อใหม่อัตโนมัติ
-          const sep = TARGET_URL.includes('?') ? '&' : '?';
-          img.src = TARGET_URL + sep + '_retry=' + Date.now();
-        }, 2000);
-      };
-
-      // เริ่มโหลดภาพจาก ESP32-CAM
-      img.src = TARGET_URL;
-
-      // ในบาง Browser ของ Android MJPEG onload อาจถูกเรียกครั้งแรก จึงส่ง CONNECTED เมื่อเริ่มโหลดได้สำเร็จ
-      setTimeout(() => {
-        if (img.complete && img.naturalWidth > 0) {
-          sendToNative({ type: 'STATUS', status: 'CONNECTED' });
+      async function startMjpegStream() {
+        if (abortController) {
+          try { abortController.abort(); } catch (e) {}
         }
-      }, 1500);
+        abortController = new AbortController();
+
+        try {
+          const res = await fetch(TARGET_URL, {
+            signal: abortController.signal,
+            cache: 'no-store'
+          });
+
+          if (!res.ok) {
+            throw new Error('HTTP ' + res.status);
+          }
+
+          sendToNative({ type: 'STATUS', status: 'CONNECTED' });
+
+          const reader = res.body.getReader();
+          let buf = new Uint8Array(0);
+
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            if (!value) continue;
+
+            buf = appendBuffer(buf, value);
+
+            while (true) {
+              // ค้นหาจุดเริ่มต้นของไฟล์ JPEG (SOI): 0xFF, 0xD8
+              let startIndex = -1;
+              for (let i = 0; i < buf.length - 1; i++) {
+                if (buf[i] === 0xFF && buf[i + 1] === 0xD8) {
+                  startIndex = i;
+                  break;
+                }
+              }
+
+              if (startIndex === -1) {
+                if (buf.length > 1) {
+                  buf = buf.slice(-1);
+                }
+                break;
+              }
+
+              // ค้นหาจุดสิ้นสุดของไฟล์ JPEG (EOI): 0xFF, 0xD9
+              let endIndex = -1;
+              for (let i = startIndex + 2; i < buf.length - 1; i++) {
+                if (buf[i] === 0xFF && buf[i + 1] === 0xD9) {
+                  endIndex = i + 2;
+                  break;
+                }
+              }
+
+              if (endIndex === -1) {
+                if (startIndex > 0) {
+                  buf = buf.slice(startIndex);
+                }
+                break;
+              }
+
+              // ได้ภาพ JPEG 1 เฟรมเต็ม
+              const frameBytes = buf.slice(startIndex, endIndex);
+              frameCount++;
+
+              if (urlObject) {
+                URL.revokeObjectURL(urlObject);
+              }
+              urlObject = URL.createObjectURL(new Blob([frameBytes], { type: 'image/jpeg' }));
+              img.src = urlObject;
+
+              buf = buf.slice(endIndex);
+            }
+          }
+
+          sendToNative({ type: 'STATUS', status: 'DISCONNECTED' });
+          setTimeout(startMjpegStream, 1500);
+
+        } catch (err) {
+          if (err.name === 'AbortError') return;
+          console.warn('MJPEG fetch reader error:', err);
+          sendToNative({ type: 'STATUS', status: 'ERROR' });
+
+          // ถ้าเกิดข้อผิดพลาด ให้ fallback ใช้ img.src ชั่วคราว และลองต่อใหม่
+          img.src = TARGET_URL + (TARGET_URL.includes('?') ? '&' : '?') + '_t=' + Date.now();
+          setTimeout(startMjpegStream, 2500);
+        }
+      }
+
+      startMjpegStream();
 
     } else {
       // ----------------------------------------------------
