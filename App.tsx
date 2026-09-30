@@ -1,10 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
   TouchableOpacity,
   StatusBar,
-  Modal,
+  Animated,
   TextInput,
   Platform,
   ScrollView,
@@ -45,36 +45,64 @@ function DroneCockpit() {
   const [fps, setFps] = useState(0);
   const [connectionStatus, setConnectionStatus] = useState('CONNECTING');
 
+  // In-app Toast (แทน alert() ที่ทำให้ system UI โผล่)
+  const [toastMessage, setToastMessage] = useState('')
+  const [toastVisible, setToastVisible] = useState(false);
+  const toastOpacity = useRef(new Animated.Value(0)).current;
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   // ค่าที่ได้รับจาก Gimbal ซ้าย (Throttle, Yaw) และ ขวา (Pitch, Roll)
   // เริ่มต้นให้ Throttle (y) อยู่ที่ -1.0 (ล่างสุด = 0% / 1000 PWM) เพื่อความปลอดภัย
   const [leftStick, setLeftStick] = useState({ x: 0, y: -1 });
   const [rightStick, setRightStick] = useState({ x: 0, y: 0 });
+
+  // ฟังก์ชันบังคับซ่อน Navigation Bar แบบรวมศูนย์
+  const enforceImmersive = useCallback(() => {
+    if (Platform.OS === 'android') {
+      NavigationBar.setHidden(true);
+    }
+  }, []);
+
+  // แสดง Toast แทน alert()
+  const showToast = useCallback((message: string, duration = 3000) => {
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    setToastMessage(message);
+    setToastVisible(true);
+    Animated.timing(toastOpacity, {
+      toValue: 1,
+      duration: 250,
+      useNativeDriver: true,
+    }).start();
+    toastTimer.current = setTimeout(() => {
+      Animated.timing(toastOpacity, {
+        toValue: 0,
+        duration: 400,
+        useNativeDriver: true,
+      }).start(() => setToastVisible(false));
+    }, duration);
+  }, [toastOpacity]);
 
   // ล็อกแนวนอนและซ่อนแถบปุ่มแบบ Immersive ถาวร
   useEffect(() => {
     async function configureFullscreen() {
       try {
         await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
-        if (Platform.OS === 'android') {
-          NavigationBar.setHidden(true);
-        }
+        enforceImmersive();
       } catch (err) {
         console.warn('Fullscreen config error:', err);
       }
     }
     configureFullscreen();
 
-    // ล็อคไม่ให้แถบนำทางโผล่ค้างเวลาไปกดปุ่มอื่น
+    // ล็อคไม่ให้แถบนำทางโผล่ค้างเวลาไปกดปุ่มอื่น — ซ่อนกลับเร็วมาก
     const subscription = addVisibilityListener(({ visibility }) => {
-      if (visibility === 'visible' && Platform.OS === 'android') {
-        setTimeout(() => {
-          NavigationBar.setHidden(true);
-        }, 1500); // ซ่อนกลับอัตโนมัติ
+      if (visibility === 'visible') {
+        setTimeout(enforceImmersive, 300);
       }
     });
 
     return () => subscription.remove();
-  }, []);
+  }, [enforceImmersive]);
 
   // ----------------------------------------------------
   // ระบบ UDP Broadcast Auto-Discovery: ดักฟัง IP บอร์ดอัตโนมัติ
@@ -141,10 +169,7 @@ function DroneCockpit() {
       // รีเซ็ตคันโยก Throttle ให้เด้งกลับลงไปด้านล่างสุดทันที
       setThrottleResetTrigger((prev) => prev + 1);
       setLeftStick((prev) => ({ ...prev, y: -1 }));
-
-      if (Platform.OS === 'android') {
-        NavigationBar.setHidden(true);
-      }
+      enforceImmersive();
     } else {
       // --- เมื่อกด STOP ---
       setIsStarted(false);
@@ -153,11 +178,9 @@ function DroneCockpit() {
       // รีเซ็ต Throttle กลับลงด้านล่าง
       setThrottleResetTrigger((prev) => prev + 1);
       setLeftStick((prev) => ({ ...prev, y: -1 }));
-
-      alert('MOTORS STOPPED: ตัดกำลังมอเตอร์และเข้าสู่โหมดปลอดภัยแล้ว');
-      if (Platform.OS === 'android') {
-        NavigationBar.setHidden(true);
-      }
+      // แสดง Toast ในแอปแทน alert() เพื่อไม่ให้ system UI โผล่
+      showToast('⛔ MOTORS STOPPED: ตัดกำลังมอเตอร์และเข้าสู่โหมดปลอดภัยแล้ว');
+      enforceImmersive();
     }
   };
 
@@ -359,9 +382,28 @@ function DroneCockpit() {
         </TouchableOpacity>
       </View>
 
-      {/* Settings Modal (ปรับแต่ง IP กล้อง ESP32 และ IP ไฟลท์คอนโทรลเลอร์ ESP8266) */}
-      <Modal visible={isSettingsOpen} transparent={true} animationType="fade">
-        <View className="flex-1 bg-black/60 justify-center items-center p-4">
+      {/* Settings Overlay (ใช้ View แทน Modal เพื่อไม่ให้สร้าง Android Window ใหม่ที่ทำ nav bar โผล่) */}
+      {isSettingsOpen && (
+        <View
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            zIndex: 999,
+            backgroundColor: 'rgba(0,0,0,0.6)',
+            justifyContent: 'center',
+            alignItems: 'center',
+            padding: 16,
+          }}>
+          {/* Backdrop กดนอก panel เพื่อปิด */}
+          <TouchableOpacity
+            activeOpacity={1}
+            onPress={() => setIsSettingsOpen(false)}
+            style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
+          />
+
           <View className="bg-[#1e293b] rounded-2xl p-5 w-96 shadow-2xl border border-slate-700 max-h-[90%]">
             <View className="flex-row justify-between items-center mb-1">
               <Text className="text-white text-base font-bold tracking-wide">
@@ -447,7 +489,7 @@ function DroneCockpit() {
               </View>
             </ScrollView>
 
-            {/* Modal Buttons */}
+            {/* Overlay Buttons */}
             <View className="flex-row justify-end gap-2 pt-2 border-t border-slate-700/60">
               <TouchableOpacity
                 className="px-4 py-2 rounded-lg bg-slate-800 active:bg-slate-700"
@@ -468,7 +510,36 @@ function DroneCockpit() {
             </View>
           </View>
         </View>
-      </Modal>
+      )}
+
+      {/* In-App Toast Notification (แทน alert() เพื่อไม่ให้ system UI โผล่) */}
+      {toastVisible && (
+        <Animated.View
+          pointerEvents="none"
+          style={{
+            position: 'absolute',
+            bottom: 100,
+            left: 0,
+            right: 0,
+            alignItems: 'center',
+            opacity: toastOpacity,
+          }}>
+          <View
+            style={{
+              backgroundColor: 'rgba(220, 38, 38, 0.92)',
+              paddingHorizontal: 24,
+              paddingVertical: 12,
+              borderRadius: 999,
+              borderWidth: 1,
+              borderColor: 'rgba(248, 113, 113, 0.5)',
+              maxWidth: '80%',
+            }}>
+            <Text style={{ color: 'white', fontSize: 13, fontWeight: '700', textAlign: 'center' }}>
+              {toastMessage}
+            </Text>
+          </View>
+        </Animated.View>
+      )}
     </View>
   );
 }
