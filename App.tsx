@@ -260,6 +260,7 @@ function DroneCockpit() {
             initialY={-1}
             resetTrigger={throttleResetTrigger}
             accentColor="#38bdf8"
+            deadzoneYPercent={0}
           />
         </View>
 

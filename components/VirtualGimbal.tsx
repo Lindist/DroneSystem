@@ -19,6 +19,8 @@ interface VirtualGimbalProps {
   initialY?: number; // -1 to 1 (-1 = bottom, 0 = center, 1 = top)
   resetTrigger?: number; // trigger increment to reset to initial position
   accentColor?: string; // center jewel color
+  deadzoneXPercent?: number; // 0.0 to 1.0 — สัดส่วน deadzone แกน X (default 0.20)
+  deadzoneYPercent?: number; // 0.0 to 1.0 — สัดส่วน deadzone แกน Y (default 0.15)
 }
 
 export const VirtualGimbal: React.FC<VirtualGimbalProps> = ({
@@ -31,6 +33,8 @@ export const VirtualGimbal: React.FC<VirtualGimbalProps> = ({
   initialY = 0,
   resetTrigger = 0,
   accentColor = '#38bdf8',
+  deadzoneXPercent = 0.20,
+  deadzoneYPercent = 0.15,
 }) => {
   const maxRadius = (size / 2) * 0.44;
   // เพิ่มขนาดปุ่มลากจอยให้ใหญ่ขึ้น เต็มมือนิ้วโป้ง (~68px สำหรับขนาด 180)
@@ -106,8 +110,8 @@ export const VirtualGimbal: React.FC<VirtualGimbalProps> = ({
 
           // ระบบ Deadband: สร้าง "ร่องเสมือน" (Virtual Slot) ตรงกลางแต่ละแกน
           // ป้องกันนิ้วสั่น/เผลอเอียงเวลาตั้งใจจะลากแกนเดียวตรงๆ
-          const deadzoneX = maxRadius * 0.20; // ลากซ้าย/ขวาต้องเกิน 20% ถึงจะเริ่มมีผล
-          const deadzoneY = maxRadius * 0.15; // ลากบน/ล่างต้องเกิน 15% ถึงจะเริ่มมีผล
+          const deadzoneX = maxRadius * deadzoneXPercent;
+          const deadzoneY = maxRadius * deadzoneYPercent;
 
           let outDx = 0;
           let outDy = 0;
