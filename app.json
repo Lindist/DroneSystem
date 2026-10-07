@@ -3,15 +3,12 @@
     "name": "my-expo-app",
     "slug": "my-expo-app",
     "version": "1.0.0",
-
     "web": {
       "favicon": "./assets/favicon.png"
     },
-
     "experiments": {
       "tsconfigPaths": true
     },
-
     "plugins": [
       [
         "expo-splash-screen",
@@ -19,15 +16,15 @@
           "image": "./assets/splash.png",
           "backgroundColor": "#ffffff"
         }
-      ]
+      ],
+      "./plugins/withReactNativeUdp"
     ],
-
     "orientation": "landscape",
     "icon": "./assets/icon.png",
-
     "userInterfaceStyle": "automatic",
-
-    "assetBundlePatterns": ["**/*"],
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
       "supportsTablet": true
     },
@@ -43,6 +40,12 @@
         "ACCESS_WIFI_STATE",
         "CHANGE_WIFI_MULTICAST_STATE"
       ]
-    }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "79aff08c-810c-4e00-961e-928961f6e4e2"
+      }
+    },
+    "owner": "lindist"
   }
 }
